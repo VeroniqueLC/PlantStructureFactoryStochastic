@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GREENLAB stochastique — Automate double-échelle</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f4f0; color: #333;
+           height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    header { background: #6A1B9A; color: white; padding: 9px 18px; flex-shrink: 0;
+             display: flex; align-items: baseline; gap: 16px; }
+    header h1 { font-size: 1.05em; font-weight: 700; }
+    header p  { font-size: 0.78em; opacity: 0.82; }
+
+    .toolbar { background: white; border-bottom: 1px solid #ddd; padding: 8px 16px;
+               display: flex; align-items: center; gap: 16px; flex-shrink: 0; flex-wrap: wrap; }
+    .toolbar .grp { display: flex; align-items: center; gap: 6px; }
+    .toolbar label { font-size: 0.82em; color: #555; }
+    .toolbar input[type=number] { width: 56px; padding: 4px 6px; border: 1px solid #ccc;
+                                   border-radius: 4px; font-size: 0.85em; text-align: center; }
+    .toolbar input#seed { width: 84px; }
+    .toolbar button { background: #6A1B9A; color: white; border: none; padding: 7px 16px;
+                      border-radius: 6px; cursor: pointer; font-size: 0.9em; font-weight: 600; }
+    .toolbar button:hover { background: #4A148C; }
+    #info { font-size: 0.78em; color: #777; margin-left: auto; }
+
+    .panels { flex: 1; display: flex; flex-direction: row; overflow: hidden; }
+    .panel-aut   { flex: 1 1 50%; border-right: 2px solid #e0e0e0; display: flex;
+                   flex-direction: column; padding: 4px 10px; overflow: hidden; }
+    .panel-plant { flex: 1 1 50%; display: flex; flex-direction: column;
+                   padding: 4px 10px; overflow: hidden; }
+    .panel-title { font-size: 0.72em; font-weight: 700; text-transform: uppercase;
+                   letter-spacing: .06em; color: #999; margin: 2px 0 4px 2px; }
+
+    .aut-scroll { flex: 1; overflow-y: auto; padding-right: 4px; }
+    .ap-card { border: 2px solid; border-radius: 10px; background: white;
+               margin-bottom: 4px; padding: 8px 12px; }
+    .ap-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .ap-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+    .ap-title { font-weight: 700; font-size: 0.95em; }
+    .ap-head .sej { margin-left: auto; display: flex; align-items: center; gap: 5px; }
+    .ap-head .sej label { font-size: 0.76em; color: #666; }
+    .ap-head .sej input { width: 50px; padding: 3px 5px; border: 1px solid #ccc;
+                          border-radius: 4px; text-align: center; font-size: 0.85em; }
+
+    .nbrow { display: flex; align-items: center; gap: 6px; margin: 2px 0 6px; font-size: 0.82em; color: #555; }
+    .nbrow input { width: 48px; padding: 3px 5px; border: 1px solid #ccc; border-radius: 4px;
+                   text-align: center; font-size: 0.85em; }
+
+    .ap-rows { display: flex; flex-direction: column; gap: 4px; padding-left: 2px; }
+    .ap-row { display: flex; align-items: center; gap: 8px; }
+    .ap-row .glyph { flex-shrink: 0; }
+    .ap-row .peq { color: #999; font-size: 0.85em; }
+    .ap-row input { width: 56px; padding: 3px 5px; border: 1px solid #ccc;
+                    border-radius: 4px; text-align: center; font-size: 0.85em; }
+    .ap-row .desc { font-size: 0.78em; color: #555; }
+    .rien { font-size: 0.78em; color: #777; padding-left: 50px; }
+    .rien.bad { color: #c62828; font-weight: 600; }
+
+    .ap-foot { display: flex; align-items: center; gap: 6px; margin-top: 7px;
+               padding-top: 6px; border-top: 1px dashed #e0e0e0; }
+    .ap-foot label { font-size: 0.78em; color: #666; }
+    .ap-foot select { padding: 3px 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.82em; }
+    .connector { text-align: center; color: #555; font-size: 0.8em; margin: -1px 0 3px; }
+
+    #svgPlant { width: 100%; flex: 1; }
+    .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 2px 4px; flex-shrink: 0; }
+    .legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.76em; color: #555; }
+    .legend-line { width: 18px; height: 4px; border-radius: 2px; }
+
+    .ca-bar { flex-shrink: 0; background: #fafafa; border: 1px solid #e0e0e0; border-radius: 8px;
+              margin-top: 4px; padding: 7px 12px; display: flex; align-items: center; gap: 12px; }
+    .ca-bar label { font-size: 0.82em; color: #555; white-space: nowrap; }
+    .ca-bar input[type=range] { flex: 1; }
+    .ca-bar .ca-val { font-size: 0.9em; font-weight: 700; color: #6A1B9A; width: 26px; }
+
+    .hint { font-size: 0.72em; color: #999; padding: 2px 4px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>GREENLAB stochastique — Automate double-échelle</h1>
+  <p>Variabilité phénotypique : ramification et nombre de phytomères tirés au hasard</p>
+</header>
+
+<div class="toolbar">
+  <div class="grp"><label>Niveaux d'AP</label>
+    <input type="number" id="numPA" min="1" max="5" value="3" onchange="onNumPA()"></div>
+  <div class="grp"><label>t =</label>
+    <input type="number" id="maxCA" min="1" max="40" value="10" onchange="onMaxCA()">
+    <label>cycles (AC)</label></div>
+  <div class="grp"><label>graine</label>
+    <input type="number" id="seed" min="0" value="12345" onchange="generate()"></div>
+  <button onclick="newDraw()">🎲 Nouveau tirage</button>
+  <div class="grp"><label><input type="checkbox" id="showLeaves" onchange="redraw()"> Feuilles</label></div>
+  <div id="info"></div>
+</div>
+
+<div class="panels">
+  <div class="panel-aut">
+    <div class="panel-title">Automate stochastique — paramètres par âge physiologique</div>
+    <div id="autCards" class="aut-scroll"></div>
+    <div class="hint">Chaque UC d'AP&nbsp;<i>i</i> : nombre de phytomères tiré uniformément dans [min, max].
+       Chaque phytomère porte un bourgeon AP&nbsp;<i>j</i> (≥&nbsp;<i>i</i>+1) avec la probabilité&nbsp;<i>p</i>,
+       sinon rien. La même graine reproduit la même plante.</div>
+  </div>
+
+  <div class="panel-plant">
+    <div class="panel-title">Structure de la plante simulée</div>
+    <div id="legendPlant" class="legend"></div>
+    <svg id="svgPlant" viewBox="0 0 600 560" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="ca-bar">
+      <label>Âge chronologique (AC) :</label>
+      <input type="range" id="caSlider" min="1" max="10" value="10" oninput="onSlider()">
+      <span class="ca-val" id="caVal">10</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════
+//  PALETTE & CONSTANTES
+// ════════════════════════════════════════════
+const PA_COLORS = ['#1565C0','#2E7D32','#C62828','#E65100','#6A1B9A'];
+const PA_LIGHT  = ['#64B5F6','#81C784','#E57373','#FFB74D','#BA68C8'];
+const SEG_LEN   = [34, 24, 16, 11, 8];
+const BR_ANGLE  = [0, 52, 44, 38, 32];
+const STROKE    = [4.6, 3.3, 2.4, 1.7, 1.2];
+const MAX_NODES = 12000;
+const VB_W = 600, VB_H = 560;
+
+// ════════════════════════════════════════════
+//  ÉTAT
+//  state.pa[i] = { macro, terminal, nmin, nmax, p:{ j:prob } }
+// ════════════════════════════════════════════
+let state = { numPA: 3, maxCA: 10, pa: [] };
+let plantTree = null;          // structure réalisée (tirée une seule fois)
+let rng = null;                // générateur pseudo-aléatoire (graine)
+let fixedTransform = null;
+let DISPLAY_CA = 0, LEAF_ON = false, nodeCount = 0;
+
+function defaultPA(pa, numPA) {
+  const d = {
+    macro: pa === 1 ? 10 : (pa === 2 ? 4 : 2),
+    terminal: (pa === 2 && numPA >= 3) ? 3 : 0,
+    nmin: pa === 1 ? 1 : (pa === 2 ? 2 : 1),
+    nmax: pa === 1 ? 2 : (pa === 2 ? 4 : 2),
+    p: {}
+  };
+  for (let j = pa + 1; j <= numPA; j++) d.p[j] = 0;
+  if (pa === 1 && numPA >= 2) d.p[2] = 0.7;
+  if (pa === 2 && numPA >= 3) d.p[3] = 0.5;
+  return d;
+}
+function normalizePA() {
+  for (let i = 0; i < state.pa.length; i++) {
+    const pa = i + 1, p = state.pa[i];
+    if (p.terminal > state.numPA) p.terminal = 0;
+    const np = {};
+    for (let j = pa + 1; j <= state.numPA; j++) np[j] = p.p[j] || 0;
+    p.p = np;
+  }
+}
+function initState() {
+  state.numPA = parseInt(document.getElementById('numPA').value);
+  state.maxCA = parseInt(document.getElementById('maxCA').value);
+  state.pa = [];
+  for (let i = 0; i < state.numPA; i++) state.pa.push(defaultPA(i + 1, state.numPA));
+}
+
+// ════════════════════════════════════════════
+//  GÉNÉRATEUR PSEUDO-ALÉATOIRE (mulberry32, reproductible via graine)
+// ════════════════════════════════════════════
+function makeRNG(seed) {
+  let s = seed >>> 0;
+  return function () {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function randInt(a, b) { if (b < a) [a, b] = [b, a]; return a + Math.floor(rng() * (b - a + 1)); }
+function drawBud(pa, c) {              // tirage catégoriel : 0 = rien, sinon AP j
+  let r = rng(), cum = 0;
+  for (let j = pa + 1; j <= state.numPA; j++) { cum += c.p[j] || 0; if (r < cum) return j; }
+  return 0;
+}
+
+// ════════════════════════════════════════════
+//  HANDLERS
+// ════════════════════════════════════════════
+function onNumPA() {
+  const n = Math.max(1, Math.min(5, parseInt(document.getElementById('numPA').value) || 1));
+  document.getElementById('numPA').value = n;
+  if (n > state.pa.length)
+    for (let i = state.pa.length; i < n; i++) state.pa.push(defaultPA(i + 1, n));
+  else state.pa.length = n;
+  state.numPA = n;
+  normalizePA();
+  renderAutomaton(); renderLegends(); generate();
+}
+function onMaxCA() {
+  state.maxCA = Math.max(1, Math.min(40, parseInt(document.getElementById('maxCA').value) || 1));
+  document.getElementById('maxCA').value = state.maxCA;
+  generate();
+}
+function setMacro(i, v){ state.pa[i].macro = Math.max(1, parseInt(v) || 1); generate(); }
+function setNmin (i, v){ const p = state.pa[i]; p.nmin = Math.max(0, parseInt(v) || 0);
+                         if (p.nmax < p.nmin) p.nmax = p.nmin; generate(); }
+function setNmax (i, v){ const p = state.pa[i]; p.nmax = Math.max(0, parseInt(v) || 0);
+                         if (p.nmax < p.nmin) p.nmin = p.nmax; generate(); }
+function setP(i, j, v){
+  let x = parseFloat(String(v).replace(',', '.')); if (isNaN(x)) x = 0;
+  state.pa[i].p[j] = Math.max(0, Math.min(1, x));
+  updateRien(i); generate();
+}
+function setTerm(i, v){ state.pa[i].terminal = parseInt(v); renderAutomaton(); generate(); }
+
+function updateRien(i) {
+  const pa = i + 1, c = state.pa[i];
+  let sum = 0; for (let j = pa + 1; j <= state.numPA; j++) sum += c.p[j] || 0;
+  const el = document.getElementById('rien' + i);
+  if (!el) return;
+  const rien = 1 - sum;
+  if (sum > 1.0001) { el.textContent = `⚠ somme des probabilités = ${sum.toFixed(2)} > 1`; el.className = 'rien bad'; }
+  else { el.textContent = `→ ne porte rien avec p = ${rien.toFixed(2)}`; el.className = 'rien'; }
+}
+
+function syncSlider() {
+  const s = document.getElementById('caSlider');
+  s.max = state.maxCA;
+  if (parseInt(s.value) > state.maxCA) s.value = state.maxCA;
+  document.getElementById('caVal').textContent = s.value;
+}
+function onSlider() {
+  document.getElementById('caVal').textContent = document.getElementById('caSlider').value;
+  renderPlant(parseInt(document.getElementById('caSlider').value));
+}
+function redraw() { renderPlant(parseInt(document.getElementById('caSlider').value)); }
+function newDraw() {
+  document.getElementById('seed').value = Math.floor(Math.random() * 1000000);
+  generate();
+}
+
+// ════════════════════════════════════════════
+//  GLYPHE phytomère
+// ════════════════════════════════════════════
+function glyph(pa, budPA) {
+  const col = PA_COLORS[pa - 1];
+  let s = `<svg class="glyph" width="42" height="46" viewBox="0 0 42 46">`;
+  s += `<rect x="11" y="6" width="8" height="34" rx="3" fill="${col}"/>`;
+  s += `<circle cx="15" cy="7" r="4" fill="${PA_LIGHT[pa-1]}"/>`;
+  if (budPA) {
+    s += `<rect x="19" y="8" width="18" height="7" rx="3" fill="${PA_COLORS[budPA-1]}"/>`;
+    s += `<circle cx="37" cy="11.5" r="3.5" fill="${PA_LIGHT[budPA-1]}"/>`;
+  }
+  s += `</svg>`;
+  return s;
+}
+
+// ════════════════════════════════════════════
+//  RENDU DE L'AUTOMATE
+// ════════════════════════════════════════════
+function renderAutomaton() {
+  const n = state.numPA;
+  let h = '';
+  for (let i = 0; i < n; i++) {
+    const pa = i + 1, c = state.pa[i], col = PA_COLORS[i];
+    h += `<div class="ap-card" style="border-color:${col}">`;
+    h += `<div class="ap-head">
+            <span class="ap-dot" style="background:${col}"></span>
+            <span class="ap-title" style="color:${col}">AP ${pa}</span>
+            <span class="sej"><label>séjours (UC/axe)</label>
+              <input type="number" min="1" max="30" value="${c.macro}" oninput="setMacro(${i}, this.value)"></span>
+          </div>`;
+    h += `<div class="nbrow">phytomères / UC : min
+            <input type="number" min="0" max="20" value="${c.nmin}" oninput="setNmin(${i}, this.value)"> – max
+            <input type="number" min="0" max="20" value="${c.nmax}" oninput="setNmax(${i}, this.value)">
+            <span style="color:#999">(tirage uniforme)</span></div>`;
+
+    h += `<div class="ap-rows">`;
+    for (let j = pa + 1; j <= n; j++) {
+      h += `<div class="ap-row">${glyph(pa, j)}<span class="peq">p =</span>
+              <input type="number" min="0" max="1" step="0.05" value="${c.p[j]||0}" oninput="setP(${i}, ${j}, this.value)">
+              <span class="desc">porte un bourgeon <b style="color:${PA_COLORS[j-1]}">AP ${j}</b></span></div>`;
+    }
+    h += `<div id="rien${i}" class="rien"></div>`;
+    h += `</div>`;
+
+    let termOpts = `<option value="0" ${c.terminal===0?'selected':''}>arrêt ✕</option>`;
+    for (let j = 1; j <= n; j++) termOpts += `<option value="${j}" ${c.terminal===j?'selected':''}>AP ${j}</option>`;
+    h += `<div class="ap-foot"><label>bourgeon terminal → devient</label>
+            <select onchange="setTerm(${i}, this.value)">${termOpts}</select></div>`;
+    h += `</div>`;
+    if (c.terminal > 0)
+      h += `<div class="connector">↓ transition terminale vers <b style="color:${PA_COLORS[c.terminal-1]}">AP ${c.terminal}</b></div>`;
+  }
+  document.getElementById('autCards').innerHTML = h;
+  for (let i = 0; i < n; i++) updateRien(i);
+}
+
+// ════════════════════════════════════════════
+//  GÉNÉRATION DE LA STRUCTURE (une seule fois, avec la graine)
+// ════════════════════════════════════════════
+function buildAxis(pa, birthCA, maxCA) {
+  if (pa === 0 || pa > state.numPA || nodeCount > MAX_NODES) return null;
+  const c = state.pa[pa - 1];
+  const axis = { pa, phytomers: [], continuation: null };
+
+  for (let age = 1; age <= c.macro; age++) {
+    const ca = birthCA + age;
+    if (ca > maxCA) break;
+    const N = randInt(c.nmin, c.nmax);                 // point 2 : nb de phytomères/UC
+    let bareCount = 0; const cnt = {};
+    for (let j = pa + 1; j <= state.numPA; j++) cnt[j] = 0;
+    for (let t = 0; t < N; t++) {                       // point 1 : que porte chaque phytomère
+      const j = drawBud(pa, c);
+      if (j === 0) bareCount++; else cnt[j]++;
+    }
+    const startLen = axis.phytomers.length;
+    for (let b = 0; b < bareCount; b++) {                // nus (base de l'UC)
+      if (nodeCount++ > MAX_NODES) break;
+      axis.phytomers.push({ ca, axillary: null });
+    }
+    for (let j = state.numPA; j >= pa + 1; j--) {        // portés : plus âgé en bas
+      for (let k = 0; k < cnt[j]; k++) {
+        if (nodeCount++ > MAX_NODES) break;
+        axis.phytomers.push({ ca, axillary: buildAxis(j, ca, maxCA) });
+      }
+    }
+    if (axis.phytomers.length > startLen)
+      axis.phytomers[axis.phytomers.length - 1].ucEnd = true;
+    if (nodeCount > MAX_NODES) break;
+  }
+
+  const termCA = birthCA + c.macro;
+  if (c.terminal > 0 && termCA < maxCA)
+    axis.continuation = buildAxis(c.terminal, termCA, maxCA);
+  return axis;
+}
+
+// ════════════════════════════════════════════
+//  MISE EN PAGE (filtrée par l'âge affiché)
+// ════════════════════════════════════════════
+function axisAlive(axis) {
+  if (!axis) return false;
+  if (axis.phytomers.some(ph => ph.ca === DISPLAY_CA)) return true;
+  return axisAlive(axis.continuation);
+}
+
+function layoutAxis(axis, x, y, angle, edges, ticks, leaves, display, counter) {
+  const segLen = SEG_LEN[Math.min(axis.pa - 1, SEG_LEN.length - 1)];
+  const rad = angle * Math.PI / 180;
+  const perpX = Math.cos(rad), perpY = Math.sin(rad);
+  const alive = axisAlive(axis);
+  let cx = x, cy = y, k = 0, pi = 0;
+  for (const ph of axis.phytomers) {
+    if (ph.ca > display) return;                 // croissance future : on stoppe l'axe ici
+    const nx = cx + Math.sin(rad) * segLen;
+    const ny = cy - Math.cos(rad) * segLen;
+    edges.push({ x1: cx, y1: cy, x2: nx, y2: ny, pa: axis.pa, alive });
+    counter.n++;
+    const hl = segLen * (ph.ucEnd ? 0.20 : 0.12);
+    ticks.push({ x1: nx - perpX*hl, y1: ny - perpY*hl,
+                 x2: nx + perpX*hl, y2: ny + perpY*hl, uc: !!ph.ucEnd, alive });
+    if (LEAF_ON && ph.ca === display)
+      leaves.push({ x: nx, y: ny, rad, size: segLen, side: (pi % 2 === 0) ? 1 : -1 });
+    if (ph.axillary) {
+      const side = (k % 2 === 0) ? -1 : 1;
+      const delta = BR_ANGLE[Math.min(ph.axillary.pa - 1, BR_ANGLE.length - 1)];
+      layoutAxis(ph.axillary, nx, ny, angle + side * delta, edges, ticks, leaves, display, counter);
+      k++;
+    }
+    cx = nx; cy = ny; pi++;
+  }
+  if (axis.continuation) layoutAxis(axis.continuation, cx, cy, angle, edges, ticks, leaves, display, counter);
+}
+
+function buildVisible(display) {
+  DISPLAY_CA = display;
+  const edges = [], ticks = [], leaves = [], counter = { n: 0 };
+  if (plantTree) layoutAxis(plantTree, 0, 0, 0, edges, ticks, leaves, display, counter);
+  return { edges, ticks, leaves, count: counter.n };
+}
+
+function computeTransform() {
+  const { edges } = buildVisible(state.maxCA);
+  let minX=0, maxX=0, minY=0;
+  for (const e of edges) {
+    minX = Math.min(minX, e.x1, e.x2); maxX = Math.max(maxX, e.x1, e.x2);
+    minY = Math.min(minY, e.y1, e.y2);
+  }
+  const margin = 28;
+  const sc = Math.min((VB_W-2*margin)/(maxX-minX||1), (VB_H-2*margin)/(-minY||1));
+  fixedTransform = { sc, offX: VB_W/2 - (minX+maxX)/2*sc, offY: VB_H - margin };
+}
+
+// ════════════════════════════════════════════
+//  RENDU DE LA PLANTE
+// ════════════════════════════════════════════
+function renderPlant(ca) {
+  const svg = document.getElementById('svgPlant');
+  if (!fixedTransform) computeTransform();
+  LEAF_ON = document.getElementById('showLeaves').checked;
+  const { edges, ticks, leaves, count } = buildVisible(ca);
+
+  document.getElementById('info').textContent =
+    nodeCount > MAX_NODES ? `⚠ tronqué (>${MAX_NODES} phytomères)`
+                          : `${count} phytomère${count>1?'s':''} visibles · AC = ${ca} · graine ${document.getElementById('seed').value}`;
+
+  if (!edges.length) { svg.innerHTML = ''; return; }
+  const { sc, offX, offY } = fixedTransform;
+  const DEAD = 0.28;
+  const tx = v => (v*sc+offX).toFixed(1);
+  const ty = v => (v*sc+offY).toFixed(1);
+
+  let h = '';
+  for (const e of edges) {
+    const w = Math.max(0.4, STROKE[Math.min(e.pa-1, STROKE.length-1)]);
+    h += `<line x1="${tx(e.x1)}" y1="${ty(e.y1)}" x2="${tx(e.x2)}" y2="${ty(e.y2)}"
+            stroke="${PA_COLORS[e.pa-1]}" stroke-width="${w}" stroke-linecap="round"
+            stroke-opacity="${e.alive ? 1 : DEAD}"/>`;
+  }
+  for (const t of ticks) {
+    const col = t.uc ? '#111' : '#999';
+    const w   = t.uc ? 1.8 : 1.0;
+    h += `<line x1="${tx(t.x1)}" y1="${ty(t.y1)}" x2="${tx(t.x2)}" y2="${ty(t.y2)}"
+            stroke="${col}" stroke-width="${w}" stroke-linecap="round"
+            stroke-opacity="${t.alive ? 1 : DEAD}"/>`;
+  }
+  for (const lf of leaves) {
+    const sx = +tx(lf.x), sy = +ty(lf.y);
+    const bdx = Math.sin(lf.rad), bdy = -Math.cos(lf.rad);
+    const branchDeg = Math.atan2(bdy, bdx) * 180 / Math.PI;
+    const leafDeg = branchDeg + lf.side * 40;
+    const bl = Math.max(5, lf.size * sc * 0.85);
+    const bw = bl * 0.45;
+    const r = leafDeg * Math.PI / 180;
+    const ecx = (sx + Math.cos(r) * bl * 0.55).toFixed(1);
+    const ecy = (sy + Math.sin(r) * bl * 0.55).toFixed(1);
+    h += `<line x1="${sx}" y1="${sy}" x2="${ecx}" y2="${ecy}" stroke="#2e7d32" stroke-width="0.7"/>`;
+    h += `<ellipse cx="${ecx}" cy="${ecy}" rx="${(bl*0.5).toFixed(1)}" ry="${(bw*0.5).toFixed(1)}"
+            transform="rotate(${leafDeg.toFixed(1)} ${ecx} ${ecy})"
+            fill="#4caf50" fill-opacity="0.9" stroke="#2e7d32" stroke-width="0.4"/>`;
+  }
+  svg.innerHTML = h;
+}
+
+// ════════════════════════════════════════════
+//  LÉGENDES
+// ════════════════════════════════════════════
+function renderLegends() {
+  const lp = document.getElementById('legendPlant');
+  lp.innerHTML = '';
+  for (let i = 0; i < state.numPA; i++) {
+    const it = document.createElement('div'); it.className = 'legend-item';
+    it.innerHTML = `<div class="legend-line" style="background:${PA_COLORS[i]};height:${STROKE[i]+1}px"></div> AP${i+1}`;
+    lp.appendChild(it);
+  }
+}
+
+// ════════════════════════════════════════════
+//  GÉNÉRATION + RENDU
+// ════════════════════════════════════════════
+function currentSeed() {
+  const v = parseInt(document.getElementById('seed').value);
+  return isNaN(v) ? 0 : v;
+}
+function generate() {
+  rng = makeRNG(currentSeed());
+  nodeCount = 0;
+  plantTree = buildAxis(1, 0, state.maxCA);     // tirage unique
+  computeTransform();                            // échelle figée sur la plante finale
+  syncSlider();
+  document.getElementById('caSlider').value = state.maxCA;
+  document.getElementById('caVal').textContent = state.maxCA;
+  renderPlant(state.maxCA);
+}
+
+initState();
+renderAutomaton();
+renderLegends();
+window.addEventListener('load', generate);
+</script>
+</body>
+</html>
