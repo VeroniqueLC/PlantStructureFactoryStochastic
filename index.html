@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GREENLAB stochastique — Automate double-échelle</title>
+  <title>GREENLAB stochastique — lois uniforme / Poisson</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f4f0; color: #333;
@@ -46,7 +46,7 @@
                           border-radius: 4px; text-align: center; font-size: 0.85em; }
 
     .nbrow { display: flex; align-items: center; gap: 6px; margin: 2px 0 6px; font-size: 0.82em; color: #555; }
-    .nbrow input { width: 48px; padding: 3px 5px; border: 1px solid #ccc; border-radius: 4px;
+    .nbrow input { width: 52px; padding: 3px 5px; border: 1px solid #ccc; border-radius: 4px;
                    text-align: center; font-size: 0.85em; }
 
     .ap-rows { display: flex; flex-direction: column; gap: 4px; padding-left: 2px; }
@@ -82,7 +82,7 @@
 <body>
 
 <header>
-  <h1>GREENLAB stochastique — Automate double-échelle</h1>
+  <h1>GREENLAB stochastique — lois uniforme / Poisson</h1>
   <p>Variabilité phénotypique : ramification et nombre de phytomères tirés au hasard</p>
 </header>
 
@@ -92,6 +92,7 @@
   <div class="grp"><label>t =</label>
     <input type="number" id="maxCA" min="1" max="40" value="10" onchange="onMaxCA()">
     <label>cycles (AC)</label></div>
+  <div class="grp"><label><input type="checkbox" id="poisson" onchange="togglePoisson()"> Loi de Poisson</label></div>
   <div class="grp"><label>graine</label>
     <input type="number" id="seed" min="0" value="12345" onchange="generate()"></div>
   <button onclick="newDraw()">🎲 Nouveau tirage</button>
@@ -103,9 +104,9 @@
   <div class="panel-aut">
     <div class="panel-title">Automate stochastique — paramètres par âge physiologique</div>
     <div id="autCards" class="aut-scroll"></div>
-    <div class="hint">Chaque UC d'AP&nbsp;<i>i</i> : nombre de phytomères tiré uniformément dans [min, max].
-       Chaque phytomère porte un bourgeon AP&nbsp;<i>j</i> (≥&nbsp;<i>i</i>+1) avec la probabilité&nbsp;<i>p</i>,
-       sinon rien. La même graine reproduit la même plante.</div>
+    <div class="hint">Nombre de phytomères par UC : <b>loi uniforme [min, max]</b> ou <b>loi de Poisson (moyenne λ)</b>
+       selon la case cochée. Chaque phytomère porte un bourgeon AP&nbsp;<i>j</i> (≥&nbsp;<i>i</i>+1) avec
+       probabilité&nbsp;<i>p</i>, sinon rien. Même graine ⇒ même plante.</div>
   </div>
 
   <div class="panel-plant">
@@ -134,12 +135,11 @@ const VB_W = 600, VB_H = 560;
 
 // ════════════════════════════════════════════
 //  ÉTAT
-//  state.pa[i] = { macro, terminal, nmin, nmax, p:{ j:prob } }
+//  state.pa[i] = { macro, terminal, nmin, nmax, lambda, p:{ j:prob } }
+//  state.poisson : false = loi uniforme, true = loi de Poisson
 // ════════════════════════════════════════════
-let state = { numPA: 3, maxCA: 10, pa: [] };
-let plantTree = null;          // structure réalisée (tirée une seule fois)
-let rng = null;                // générateur pseudo-aléatoire (graine)
-let fixedTransform = null;
+let state = { numPA: 3, maxCA: 10, poisson: false, pa: [] };
+let plantTree = null, rng = null, fixedTransform = null;
 let DISPLAY_CA = 0, LEAF_ON = false, nodeCount = 0;
 
 function defaultPA(pa, numPA) {
@@ -148,6 +148,7 @@ function defaultPA(pa, numPA) {
     terminal: (pa === 2 && numPA >= 3) ? 3 : 0,
     nmin: pa === 1 ? 1 : (pa === 2 ? 2 : 1),
     nmax: pa === 1 ? 2 : (pa === 2 ? 4 : 2),
+    lambda: pa === 1 ? 1.5 : (pa === 2 ? 3 : 1.5),
     p: {}
   };
   for (let j = pa + 1; j <= numPA; j++) d.p[j] = 0;
@@ -167,12 +168,13 @@ function normalizePA() {
 function initState() {
   state.numPA = parseInt(document.getElementById('numPA').value);
   state.maxCA = parseInt(document.getElementById('maxCA').value);
+  state.poisson = document.getElementById('poisson').checked;
   state.pa = [];
   for (let i = 0; i < state.numPA; i++) state.pa.push(defaultPA(i + 1, state.numPA));
 }
 
 // ════════════════════════════════════════════
-//  GÉNÉRATEUR PSEUDO-ALÉATOIRE (mulberry32, reproductible via graine)
+//  GÉNÉRATEUR PSEUDO-ALÉATOIRE (reproductible)
 // ════════════════════════════════════════════
 function makeRNG(seed) {
   let s = seed >>> 0;
@@ -184,7 +186,16 @@ function makeRNG(seed) {
   };
 }
 function randInt(a, b) { if (b < a) [a, b] = [b, a]; return a + Math.floor(rng() * (b - a + 1)); }
-function drawBud(pa, c) {              // tirage catégoriel : 0 = rien, sinon AP j
+function randPoisson(lambda) {                    // algorithme de Knuth
+  if (lambda <= 0) return 0;
+  const L = Math.exp(-lambda); let k = 0, p = 1;
+  do { k++; p *= rng(); } while (p > L);
+  return k - 1;
+}
+function drawCount(c) {                            // nombre de phytomères de l'UC
+  return state.poisson ? randPoisson(c.lambda) : randInt(c.nmin, c.nmax);
+}
+function drawBud(pa, c) {
   let r = rng(), cum = 0;
   for (let j = pa + 1; j <= state.numPA; j++) { cum += c.p[j] || 0; if (r < cum) return j; }
   return 0;
@@ -208,11 +219,17 @@ function onMaxCA() {
   document.getElementById('maxCA').value = state.maxCA;
   generate();
 }
-function setMacro(i, v){ state.pa[i].macro = Math.max(1, parseInt(v) || 1); generate(); }
-function setNmin (i, v){ const p = state.pa[i]; p.nmin = Math.max(0, parseInt(v) || 0);
-                         if (p.nmax < p.nmin) p.nmax = p.nmin; generate(); }
-function setNmax (i, v){ const p = state.pa[i]; p.nmax = Math.max(0, parseInt(v) || 0);
-                         if (p.nmax < p.nmin) p.nmin = p.nmax; generate(); }
+function togglePoisson() {
+  state.poisson = document.getElementById('poisson').checked;
+  renderAutomaton(); generate();
+}
+function setMacro (i, v){ state.pa[i].macro = Math.max(1, parseInt(v) || 1); generate(); }
+function setNmin  (i, v){ const p = state.pa[i]; p.nmin = Math.max(0, parseInt(v) || 0);
+                          if (p.nmax < p.nmin) p.nmax = p.nmin; generate(); }
+function setNmax  (i, v){ const p = state.pa[i]; p.nmax = Math.max(0, parseInt(v) || 0);
+                          if (p.nmax < p.nmin) p.nmin = p.nmax; generate(); }
+function setLambda(i, v){ let x = parseFloat(String(v).replace(',', '.')); if (isNaN(x) || x < 0) x = 0;
+                          state.pa[i].lambda = x; generate(); }
 function setP(i, j, v){
   let x = parseFloat(String(v).replace(',', '.')); if (isNaN(x)) x = 0;
   state.pa[i].p[j] = Math.max(0, Math.min(1, x));
@@ -225,9 +242,8 @@ function updateRien(i) {
   let sum = 0; for (let j = pa + 1; j <= state.numPA; j++) sum += c.p[j] || 0;
   const el = document.getElementById('rien' + i);
   if (!el) return;
-  const rien = 1 - sum;
   if (sum > 1.0001) { el.textContent = `⚠ somme des probabilités = ${sum.toFixed(2)} > 1`; el.className = 'rien bad'; }
-  else { el.textContent = `→ ne porte rien avec p = ${rien.toFixed(2)}`; el.className = 'rien'; }
+  else { el.textContent = `→ ne porte rien avec p = ${(1 - sum).toFixed(2)}`; el.className = 'rien'; }
 }
 
 function syncSlider() {
@@ -241,10 +257,7 @@ function onSlider() {
   renderPlant(parseInt(document.getElementById('caSlider').value));
 }
 function redraw() { renderPlant(parseInt(document.getElementById('caSlider').value)); }
-function newDraw() {
-  document.getElementById('seed').value = Math.floor(Math.random() * 1000000);
-  generate();
-}
+function newDraw() { document.getElementById('seed').value = Math.floor(Math.random() * 1000000); generate(); }
 
 // ════════════════════════════════════════════
 //  GLYPHE phytomère
@@ -277,10 +290,18 @@ function renderAutomaton() {
             <span class="sej"><label>séjours (UC/axe)</label>
               <input type="number" min="1" max="30" value="${c.macro}" oninput="setMacro(${i}, this.value)"></span>
           </div>`;
-    h += `<div class="nbrow">phytomères / UC : min
-            <input type="number" min="0" max="20" value="${c.nmin}" oninput="setNmin(${i}, this.value)"> – max
-            <input type="number" min="0" max="20" value="${c.nmax}" oninput="setNmax(${i}, this.value)">
-            <span style="color:#999">(tirage uniforme)</span></div>`;
+
+    // nombre de phytomères/UC : uniforme [min,max] ou Poisson(λ)
+    if (state.poisson) {
+      h += `<div class="nbrow">phytomères / UC : moyenne λ
+              <input type="number" min="0" step="0.5" value="${c.lambda}" oninput="setLambda(${i}, this.value)">
+              <span style="color:#999">(loi de Poisson)</span></div>`;
+    } else {
+      h += `<div class="nbrow">phytomères / UC : min
+              <input type="number" min="0" max="20" value="${c.nmin}" oninput="setNmin(${i}, this.value)"> – max
+              <input type="number" min="0" max="20" value="${c.nmax}" oninput="setNmax(${i}, this.value)">
+              <span style="color:#999">(loi uniforme)</span></div>`;
+    }
 
     h += `<div class="ap-rows">`;
     for (let j = pa + 1; j <= n; j++) {
@@ -304,7 +325,7 @@ function renderAutomaton() {
 }
 
 // ════════════════════════════════════════════
-//  GÉNÉRATION DE LA STRUCTURE (une seule fois, avec la graine)
+//  GÉNÉRATION DE LA STRUCTURE
 // ════════════════════════════════════════════
 function buildAxis(pa, birthCA, maxCA) {
   if (pa === 0 || pa > state.numPA || nodeCount > MAX_NODES) return null;
@@ -314,19 +335,19 @@ function buildAxis(pa, birthCA, maxCA) {
   for (let age = 1; age <= c.macro; age++) {
     const ca = birthCA + age;
     if (ca > maxCA) break;
-    const N = randInt(c.nmin, c.nmax);                 // point 2 : nb de phytomères/UC
+    const N = drawCount(c);                            // uniforme ou Poisson
     let bareCount = 0; const cnt = {};
     for (let j = pa + 1; j <= state.numPA; j++) cnt[j] = 0;
-    for (let t = 0; t < N; t++) {                       // point 1 : que porte chaque phytomère
+    for (let t = 0; t < N; t++) {
       const j = drawBud(pa, c);
       if (j === 0) bareCount++; else cnt[j]++;
     }
     const startLen = axis.phytomers.length;
-    for (let b = 0; b < bareCount; b++) {                // nus (base de l'UC)
+    for (let b = 0; b < bareCount; b++) {
       if (nodeCount++ > MAX_NODES) break;
       axis.phytomers.push({ ca, axillary: null });
     }
-    for (let j = state.numPA; j >= pa + 1; j--) {        // portés : plus âgé en bas
+    for (let j = state.numPA; j >= pa + 1; j--) {
       for (let k = 0; k < cnt[j]; k++) {
         if (nodeCount++ > MAX_NODES) break;
         axis.phytomers.push({ ca, axillary: buildAxis(j, ca, maxCA) });
@@ -351,7 +372,6 @@ function axisAlive(axis) {
   if (axis.phytomers.some(ph => ph.ca === DISPLAY_CA)) return true;
   return axisAlive(axis.continuation);
 }
-
 function layoutAxis(axis, x, y, angle, edges, ticks, leaves, display, counter) {
   const segLen = SEG_LEN[Math.min(axis.pa - 1, SEG_LEN.length - 1)];
   const rad = angle * Math.PI / 180;
@@ -359,7 +379,7 @@ function layoutAxis(axis, x, y, angle, edges, ticks, leaves, display, counter) {
   const alive = axisAlive(axis);
   let cx = x, cy = y, k = 0, pi = 0;
   for (const ph of axis.phytomers) {
-    if (ph.ca > display) return;                 // croissance future : on stoppe l'axe ici
+    if (ph.ca > display) return;
     const nx = cx + Math.sin(rad) * segLen;
     const ny = cy - Math.cos(rad) * segLen;
     edges.push({ x1: cx, y1: cy, x2: nx, y2: ny, pa: axis.pa, alive });
@@ -379,14 +399,12 @@ function layoutAxis(axis, x, y, angle, edges, ticks, leaves, display, counter) {
   }
   if (axis.continuation) layoutAxis(axis.continuation, cx, cy, angle, edges, ticks, leaves, display, counter);
 }
-
 function buildVisible(display) {
   DISPLAY_CA = display;
   const edges = [], ticks = [], leaves = [], counter = { n: 0 };
   if (plantTree) layoutAxis(plantTree, 0, 0, 0, edges, ticks, leaves, display, counter);
   return { edges, ticks, leaves, count: counter.n };
 }
-
 function computeTransform() {
   const { edges } = buildVisible(state.maxCA);
   let minX=0, maxX=0, minY=0;
@@ -407,10 +425,11 @@ function renderPlant(ca) {
   if (!fixedTransform) computeTransform();
   LEAF_ON = document.getElementById('showLeaves').checked;
   const { edges, ticks, leaves, count } = buildVisible(ca);
+  const law = state.poisson ? 'Poisson' : 'uniforme';
 
   document.getElementById('info').textContent =
     nodeCount > MAX_NODES ? `⚠ tronqué (>${MAX_NODES} phytomères)`
-                          : `${count} phytomère${count>1?'s':''} visibles · AC = ${ca} · graine ${document.getElementById('seed').value}`;
+      : `${count} phytomère${count>1?'s':''} visibles · AC = ${ca} · loi ${law} · graine ${document.getElementById('seed').value}`;
 
   if (!edges.length) { svg.innerHTML = ''; return; }
   const { sc, offX, offY } = fixedTransform;
@@ -473,8 +492,8 @@ function currentSeed() {
 function generate() {
   rng = makeRNG(currentSeed());
   nodeCount = 0;
-  plantTree = buildAxis(1, 0, state.maxCA);     // tirage unique
-  computeTransform();                            // échelle figée sur la plante finale
+  plantTree = buildAxis(1, 0, state.maxCA);
+  computeTransform();
   syncSlider();
   document.getElementById('caSlider').value = state.maxCA;
   document.getElementById('caVal').textContent = state.maxCA;
